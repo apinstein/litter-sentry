@@ -1,6 +1,10 @@
 const COGNITO_ENDPOINT = "https://cognito-idp.us-east-1.amazonaws.com/";
 const COGNITO_CLIENT_ID = "4552ujeu3aic90nf8qn53levmn";
 const API_V2_ENDPOINT = "https://v2.api.whisker.iothings.site";
+// Public V2 client configuration, not a Whisker account credential. pylitterbot
+// has carried this same mobile-client value since 2022; V2 still also requires
+// the authenticated user's Bearer token. Whisker does not publish this API.
+const V2_API_CLIENT_KEY = "p7ndMoj61npRZP5CVz9v4Uj0bG769xy6758QRBPb";
 const LR4_ENDPOINT = "https://lr4.iothings.site/graphql";
 
 // These keys are stored in the current user's private Charming KV namespace.
@@ -276,7 +280,7 @@ async function whiskerFetch(env, auth, url, init = {}) {
     headers: {
       authorization: `Bearer ${auth.idToken}`,
       "content-type": "application/json",
-      ...(url.startsWith(API_V2_ENDPOINT) ? { "x-api-key": "{{secret:WHISKER_V2_API_KEY}}" } : {}),
+      ...(url.startsWith(API_V2_ENDPOINT) ? { "x-api-key": V2_API_CLIENT_KEY } : {}),
       ...(init.headers || {}),
     },
   });
@@ -395,7 +399,9 @@ async function loadLR3(env, auth, timeZone) {
     auth,
     `${API_V2_ENDPOINT}/users/${encodeURIComponent(auth.userId)}/robots`,
   );
-  if (!Array.isArray(robots)) return [];
+  if (!Array.isArray(robots)) {
+    throw new Error("Whisker V2 robot inventory returned an invalid response");
+  }
   return Promise.all(
     robots.map(async (robot) => {
       const id = String(robot.litterRobotId);

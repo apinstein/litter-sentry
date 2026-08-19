@@ -26,9 +26,12 @@ let passwordVerifierResponses = 0;
 let initialSrpParameters = null;
 let verifierParameters = null;
 let rejectRefresh = false;
+let rejectPasswordLogin = false;
 let includeStaleRobot = false;
 let failLR3Load = false;
+let invalidLR3Response = false;
 let failLR4Load = false;
+let lr3Requests = 0;
 let snitchPings = 0;
 let lastSnitchMessage = null;
 const utcTimestampWithoutZone = (date) => new Intl.DateTimeFormat("sv-SE", {
@@ -54,6 +57,12 @@ const fetchMock = async (url, init = {}) => {
     }
     if (body.AuthFlow === "USER_SRP_AUTH") {
       srpStarts += 1;
+      if (rejectPasswordLogin) {
+        return Response.json(
+          { __type: "NotAuthorizedException", message: "Incorrect username or password" },
+          { status: 400 },
+        );
+      }
       initialSrpParameters = body.AuthParameters;
       return Response.json({
         ChallengeName: "PASSWORD_VERIFIER",
@@ -148,8 +157,10 @@ const fetchMock = async (url, init = {}) => {
     return Response.json({ ok: true });
   }
   if (url.includes("v2.api.whisker")) {
-    assert.equal(init.headers["x-api-key"], "{{secret:WHISKER_V2_API_KEY}}");
+    lr3Requests += 1;
+    assert.equal(init.headers["x-api-key"], "p7ndMoj61npRZP5CVz9v4Uj0bG769xy6758QRBPb");
     if (failLR3Load) throw new Error("LR3 API unavailable");
+    if (invalidLR3Response) return Response.json({ authentication: "rejected" });
     return Response.json([]);
   }
   throw new Error(`Unexpected URL: ${url}`);
@@ -191,6 +202,15 @@ assert.deepEqual(initialSync.inventory.sourceDiagnostics, [
   { source: "LR4", status: "loaded", robots: 1 },
   { source: "LR3", status: "error", error: "LR3 API unavailable" },
 ]);
+failLR3Load = false;
+invalidLR3Response = true;
+const invalidLR3Sync = await route("sync_boxes").handler({}, { env });
+assert.deepEqual(invalidLR3Sync.inventory.sourceDiagnostics, [
+  { source: "LR4", status: "loaded", robots: 1 },
+  { source: "LR3", status: "error", error: "Whisker V2 robot inventory returned an invalid response" },
+]);
+invalidLR3Response = false;
+failLR3Load = true;
 failLR4Load = true;
 const failedSync = await route("sync_boxes").handler({}, { env });
 assert.deepEqual(failedSync.inventory.boxes, initialSync.inventory.boxes);
@@ -253,6 +273,16 @@ assert.equal(partialCheck.snitchPinged, true);
 assert.deepEqual(partialCheck.sourceDiagnostics, [{ source: "LR4", status: "loaded", robots: 1 }]);
 assert.equal(snitchPings, 3);
 
+const lr3RequestsBeforeRejectedPassword = lr3Requests;
+values.set("auth", { idToken: null, refreshToken: "expired-refresh-token" });
+rejectPasswordLogin = true;
+await assert.rejects(
+  () => route("sync_boxes").handler({}, { env }),
+  /NotAuthorizedException: Incorrect username or password/,
+);
+assert.equal(lr3Requests, lr3RequestsBeforeRejectedPassword);
+rejectPasswordLogin = false;
+
 await route("disconnect").handler({}, { env });
 assert.equal(values.has("auth"), false);
 assert.equal(values.has("config"), false);
@@ -262,8 +292,10 @@ assert.equal(disconnectedStatus.configured, false);
 
 const ui = await readFile(new URL("./ui.js", import.meta.url), "utf8");
 const backend = await readFile(new URL("./litter-sentry.js", import.meta.url), "utf8");
-assert.doesNotMatch(backend, /const API_V2_KEY\s*=/);
-assert.match(backend, /"x-api-key": "\{\{secret:WHISKER_V2_API_KEY\}\}"/);
+assert.match(backend, /const V2_API_CLIENT_KEY\s*=/);
+assert.match(backend, /Public V2 client configuration/);
+assert.match(backend, /pylitterbot/);
+assert.doesNotMatch(backend, /\{\{secret:WHISKER_V2_API_KEY\}\}/);
 const settingsViewSource = ui.slice(ui.indexOf("function settingsView"), ui.indexOf("function dashboard"));
 const dashboardSource = ui.slice(ui.indexOf("function dashboard"), ui.indexOf("async function saveSettings"));
 assert.match(settingsViewSource, /id="disconnect"/);

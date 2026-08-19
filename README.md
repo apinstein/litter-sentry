@@ -18,9 +18,11 @@ After deploying the app, create an **hourly** Charming Routine for the `run_chec
 
 If Dead Man's Snitch is configured, set its expected check-in cadence to hourly as well. Do not schedule `connect`, `sync_boxes`, or `disconnect`: those are owner-initiated setup and account-management operations.
 
-## Required Charming Secret for LR3
+## LR3 / Whisker V2 compatibility
 
-If the account has an LR3, set the `WHISKER_V2_API_KEY` secret in the app's **Settings → Secrets** before syncing or running checks. Litter Sentry sends this secret only as the server-side `x-api-key` header for Whisker's LR3/V2 API; the value is not in this repository or app storage. LR4-only accounts do not use this secret.
+Litter Sentry includes the public V2 client configuration required by Whisker's legacy LR3/V2 gateway. It is the same mobile-client value that the unofficial [pylitterbot](https://github.com/natekspencer/pylitterbot) project has carried since 2022. It is not a Whisker account credential: every V2 request also requires the connected account's authenticated Bearer token, and the V2 key alone cannot retrieve robot data.
+
+No Charming Secret or additional Settings field is required for LR3. Whisker does not publish this API; the integration is unofficial and may stop working if Whisker changes its client or service.
 
 ## Charming files
 
